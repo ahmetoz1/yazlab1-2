@@ -2,7 +2,9 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QLineEdit, QTextEdit,
                              QGroupBox, QMessageBox, QInputDialog,
                              QGraphicsView, QGraphicsScene, QGraphicsEllipseItem,
-                             QGraphicsLineItem, QGraphicsTextItem, QStatusBar)
+                             QGraphicsLineItem, QGraphicsTextItem, QStatusBar,
+                             QDialog, QFormLayout, QDialogButtonBox, 
+                             QDoubleSpinBox, QSpinBox)
 from PyQt5.QtCore import Qt, QPointF
 from PyQt5.QtGui import QPen, QBrush, QColor, QFont
 import math
@@ -97,6 +99,98 @@ class GraphCanvas(QGraphicsView):
         item = self.itemAt(event.pos())
         if isinstance(item, NodeItem):
             self.toggle_node_selection(item.node_id)
+        elif isinstance(item, QGraphicsTextItem) and isinstance(item.parentItem(), NodeItem):
+            self.toggle_node_selection(item.parentItem().node_id)
+    
+    def mouseDoubleClickEvent(self, event):
+        super().mouseDoubleClickEvent(event)
+        item = self.itemAt(event.pos())
+        node_id = None
+        if isinstance(item, NodeItem):
+            node_id = item.node_id
+        elif isinstance(item, QGraphicsTextItem) and isinstance(item.parentItem(), NodeItem):
+            node_id = item.parentItem().node_id
+        
+        if node_id is not None:
+            self.show_node_info(node_id)
+    
+    def show_node_info(self, node_id):
+        node = self.graph.get_node(node_id)
+        if not node:
+            return
+        
+        neighbors = self.graph.get_neighbors(node_id)
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Dugum {node_id} Bilgisi")
+        dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        layout = QVBoxLayout()
+        
+        info_label = QLabel()
+        info_label.setText(
+            f"Dugum ID: {node_id}\n"
+            f"Etiket: {node.label}\n"
+            f"Aktiflik: {node.aktiflik}\n"
+            f"Etkilesim: {node.etkilesim}\n"
+            f"Baglanti Sayisi: {len(neighbors)}\n"
+            f"Komsular: {neighbors}"
+        )
+        layout.addWidget(info_label)
+        
+        btn_edit = QPushButton("Duzenle")
+        btn_edit.clicked.connect(lambda: self.open_edit_dialog(node_id, dialog))
+        layout.addWidget(btn_edit)
+        
+        btn_close = QPushButton("Kapat")
+        btn_close.clicked.connect(dialog.close)
+        layout.addWidget(btn_close)
+        
+        dialog.setLayout(layout)
+        dialog.exec_()
+    
+    def open_edit_dialog(self, node_id, parent_dialog):
+        parent_dialog.close()
+        self.edit_node(node_id)
+    
+    def edit_node(self, node_id):
+        node = self.graph.get_node(node_id)
+        if not node:
+            return
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Dugum {node_id} Duzenle")
+        dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        layout = QFormLayout()
+        
+        etiket_input = QLineEdit(node.label)
+        layout.addRow("Etiket:", etiket_input)
+        
+        aktiflik_input = QDoubleSpinBox()
+        aktiflik_input.setRange(0, 1)
+        aktiflik_input.setDecimals(2)
+        aktiflik_input.setSingleStep(0.1)
+        aktiflik_input.setValue(node.aktiflik)
+        layout.addRow("Aktiflik:", aktiflik_input)
+        
+        etkilesim_input = QSpinBox()
+        etkilesim_input.setRange(0, 1000)
+        etkilesim_input.setValue(node.etkilesim)
+        layout.addRow("Etkilesim:", etkilesim_input)
+        
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        
+        dialog.setLayout(layout)
+        
+        if dialog.exec_() == QDialog.Accepted:
+            node.label = etiket_input.text()
+            node.aktiflik = aktiflik_input.value()
+            node.etkilesim = etkilesim_input.value()
+            self.draw_graph()
+            if self.parent_window:
+                self.parent_window.statusBar().showMessage(f"Dugum {node_id} guncellendi")
     
     def toggle_node_selection(self, node_id):
         if node_id in self.selected_nodes:
@@ -156,6 +250,10 @@ class ControlPanel(QWidget):
         btn_remove_node = QPushButton("Dugum Sil")
         btn_remove_node.clicked.connect(self.remove_node)
         node_layout.addWidget(btn_remove_node)
+        
+        btn_list_nodes = QPushButton("Dugum Listesi")
+        btn_list_nodes.clicked.connect(self.show_node_list)
+        node_layout.addWidget(btn_list_nodes)
         
         node_group.setLayout(node_layout)
         layout.addWidget(node_group)
@@ -239,6 +337,19 @@ class ControlPanel(QWidget):
             self.edge_n1_input.setText(str(selected[0]))
         if len(selected) >= 2:
             self.edge_n2_input.setText(str(selected[1]))
+    
+    def show_node_list(self):
+        nodes = self.parent_window.graph.get_all_nodes()
+        if not nodes:
+            QMessageBox.information(self, "Dugum Listesi", "Hic dugum yok!")
+            return
+        
+        text = f"{'ID':<5}{'Etiket':<15}{'Aktiflik':<10}{'Etkilesim':<10}\n"
+        text += "-" * 40 + "\n"
+        for node in nodes:
+            text += f"{node.node_id:<5}{node.label:<15}{node.aktiflik:<10}{node.etkilesim:<10}\n"
+        
+        QMessageBox.information(self, f"Dugum Listesi ({len(nodes)} dugum)", text)
     
     def add_node(self):
         try:
