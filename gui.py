@@ -40,17 +40,25 @@ class NodeItem(QGraphicsEllipseItem):
             self.setPen(QPen(Qt.white, 2))
 
 class EdgeItem(QGraphicsLineItem):
-    def __init__(self, node1_item, node2_item):
+    def __init__(self, node1_item, node2_item, weight=0):
         super().__init__()
         self.node1 = node1_item
         self.node2 = node2_item
+        self.weight = weight
         self.setPen(QPen(QColor('#6c757d'), 2))
+        
+        self.weight_label = QGraphicsTextItem(f"{weight:.2f}")
+        self.weight_label.setDefaultTextColor(QColor('#adb5bd'))
+        self.weight_label.setFont(QFont('Arial', 8))
         self.update_position()
     
     def update_position(self):
         p1 = self.node1.scenePos()
         p2 = self.node2.scenePos()
         self.setLine(p1.x(), p1.y(), p2.x(), p2.y())
+        mid_x = (p1.x() + p2.x()) / 2 - 15
+        mid_y = (p1.y() + p2.y()) / 2 - 10
+        self.weight_label.setPos(mid_x, mid_y)
 
 class GraphCanvas(QGraphicsView):
     def __init__(self, graph, parent=None):
@@ -89,10 +97,17 @@ class GraphCanvas(QGraphicsView):
         for edge_key in self.graph.edges:
             n1, n2 = edge_key
             if n1 in self.node_items and n2 in self.node_items:
-                edge_item = EdgeItem(self.node_items[n1], self.node_items[n2])
+                edge = self.graph.get_edge(n1, n2)
+                weight = edge.get_weight() if edge else 0
+                edge_item = EdgeItem(self.node_items[n1], self.node_items[n2], weight)
                 self.scene.addItem(edge_item)
+                self.scene.addItem(edge_item.weight_label)
                 self.edge_items[edge_key] = edge_item
                 edge_item.setZValue(-1)
+    
+    def update_edges(self):
+        for edge_item in self.edge_items.values():
+            edge_item.update_position()
     
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
