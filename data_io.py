@@ -1,7 +1,10 @@
 import json
 
 def save_json(graph, filepath, positions=None):
-    
+    """
+    Graf verisini JSON dosyasına kaydeder.
+    Pozisyon bilgisi de kaydedilir.
+    """
     data = {
         'nodes': [],
         'edges': []
@@ -31,14 +34,19 @@ def save_json(graph, filepath, positions=None):
 
 
 def load_json(graph, filepath):
-    
+    """
+    JSON dosyasından graf verisini yükler.
+    Pozisyon bilgisi de restore edilir.
+    """
     with open(filepath, 'r', encoding='utf-8') as f:
         data = json.load(f)
+    
     graph.nodes.clear()
     graph.edges.clear()
     graph.adjacency.clear()
     
     positions = {}
+    
     for node_data in data.get('nodes', []):
         node_id = node_data['id']
         graph.add_node(
@@ -49,6 +57,7 @@ def load_json(graph, filepath):
         )
         if 'x' in node_data and 'y' in node_data:
             positions[node_id] = (node_data['x'], node_data['y'])
+    
     for edge_data in data.get('edges', []):
         graph.add_edge(edge_data['source'], edge_data['target'])
     
