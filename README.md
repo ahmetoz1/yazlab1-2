@@ -286,10 +286,3 @@ Uygulama şu ana bileşenlerden oluşur:
 - **Düğüm Boyutu**: `NodeItem` sınıfında `radius` parametresini ayarlayın
 - **Varsayılan Değerler**: `models/node.py` içindeki varsayılan parametreleri değiştirin
 
-## 📝 Lisans
-
-Bu proje eğitim amaçlı geliştirilmiştir.
-
-## 👥 Katkıda Bulunanlar
-
-Kocaeli Üniversitesi - Yazılım Laboratuvarı 1-2 Projesi
