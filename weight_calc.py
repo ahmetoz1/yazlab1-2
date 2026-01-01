@@ -1,9 +1,11 @@
+import math
+
 def calculate_weight(node1, node2):
-    aktiflik_diff = abs(node1.aktiflik - node2.aktiflik)
-    etkilesim_diff = abs(node1.etkilesim - node2.etkilesim) / 10
+    aktiflik_diff = (node1.aktiflik - node2.aktiflik) ** 2
+    etkilesim_diff = (node1.etkilesim - node2.etkilesim) ** 2
+    baglanti_diff = (node1.baglanti_sayisi - node2.baglanti_sayisi) ** 2
     
-    denominator = 1 + aktiflik_diff + etkilesim_diff
-    if denominator == 0:
-        denominator = 0.001
+    distance = math.sqrt(aktiflik_diff + etkilesim_diff + baglanti_diff)
+    weight = 1 / (1 + distance)
     
-    return 1 / denominator
+    return weight

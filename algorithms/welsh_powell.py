@@ -1,35 +1,29 @@
+COLORS = ['red', 'blue', 'green', 'yellow', 'orange', 'purple', 'pink', 'cyan']
+
 def welsh_powell(graph):
-    degrees = []
+    if not graph.nodes:
+        return {'coloring': {}, 'num_colors': 0}
+    
+    node_degrees = []
     for node_id in graph.nodes:
         degree = len(graph.get_neighbors(node_id))
-        degrees.append((node_id, degree))
+        node_degrees.append((node_id, degree))
     
-    degrees.sort(key=lambda x: x[1], reverse=True)
+    node_degrees.sort(key=lambda x: x[1], reverse=True)
     
-    colors = ['Kirmizi', 'Mavi', 'Yesil', 'Sari', 'Mor', 'Turuncu', 'Pembe', 'Kahverengi']
     coloring = {}
-    color_index = 0
     
-    for node_id, _ in degrees:
-        if node_id in coloring:
-            continue
+    for node_id, _ in node_degrees:
+        neighbor_colors = set()
+        for neighbor in graph.get_neighbors(node_id):
+            if neighbor in coloring:
+                neighbor_colors.add(coloring[neighbor])
         
-        current_color = colors[color_index % len(colors)]
-        coloring[node_id] = current_color
-        
-        for other_id, _ in degrees:
-            if other_id in coloring:
-                continue
-            
-            can_color = True
-            for neighbor in graph.get_neighbors(other_id):
-                if neighbor in coloring and coloring[neighbor] == current_color:
-                    can_color = False
-                    break
-            
-            if can_color:
-                coloring[other_id] = current_color
-        
-        color_index += 1
+        for color in COLORS:
+            if color not in neighbor_colors:
+                coloring[node_id] = color
+                break
     
-    return {'coloring': coloring, 'num_colors': color_index}
+    used_colors = set(coloring.values())
+    
+    return {'coloring': coloring, 'num_colors': len(used_colors)}

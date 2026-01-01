@@ -1,13 +1,14 @@
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QLineEdit, QTextEdit,
-                             QGroupBox, QMessageBox, QInputDialog,
+                             QGroupBox, QMessageBox, QFileDialog, QInputDialog,
                              QGraphicsView, QGraphicsScene, QGraphicsEllipseItem,
                              QGraphicsLineItem, QGraphicsTextItem, QStatusBar,
-                             QDialog, QFormLayout, QDialogButtonBox, 
-                             QDoubleSpinBox, QSpinBox)
+                             QMenuBar, QAction, QSplitter, QDialog, QFormLayout,
+                             QDialogButtonBox, QDoubleSpinBox, QSpinBox)
 from PyQt5.QtCore import Qt, QPointF
 from PyQt5.QtGui import QPen, QBrush, QColor, QFont
 import math
+import random
 import time
 
 class NodeItem(QGraphicsEllipseItem):
@@ -21,6 +22,7 @@ class NodeItem(QGraphicsEllipseItem):
         self.setPen(QPen(Qt.white, 2))
         self.setFlag(QGraphicsEllipseItem.ItemIsMovable)
         self.setFlag(QGraphicsEllipseItem.ItemIsSelectable)
+        self.setFlag(QGraphicsEllipseItem.ItemSendsGeometryChanges)
         
         self.label = QGraphicsTextItem(str(node_id), self)
         self.label.setDefaultTextColor(Qt.white)
@@ -31,6 +33,11 @@ class NodeItem(QGraphicsEllipseItem):
     
     def set_color(self, color):
         self.setBrush(QBrush(QColor(color)))
+    
+    def itemChange(self, change, value):
+        if change == QGraphicsEllipseItem.ItemPositionHasChanged and self.canvas:
+            self.canvas.update_edges()
+        return super().itemChange(change, value)
     
     def set_selected_for_edge(self, selected):
         self.selected_for_edge = selected
@@ -68,11 +75,16 @@ class GraphCanvas(QGraphicsView):
         self.setScene(self.scene)
         self.node_items = {}
         self.edge_items = {}
+        self.setRenderHint(True)
         self.setBackgroundBrush(QBrush(QColor('#1a1a2e')))
         self.parent_window = parent
         self.selected_nodes = []
     
     def draw_graph(self):
+        old_positions = {}
+        for node_id, item in self.node_items.items():
+            old_positions[node_id] = item.scenePos()
+        
         self.scene.clear()
         self.node_items.clear()
         self.edge_items.clear()
@@ -87,9 +99,14 @@ class GraphCanvas(QGraphicsView):
         radius = 150
         
         for i, node_id in enumerate(nodes):
-            angle = 2 * math.pi * i / n
-            x = cx + radius * math.cos(angle)
-            y = cy + radius * math.sin(angle)
+            if node_id in old_positions:
+                x = old_positions[node_id].x()
+                y = old_positions[node_id].y()
+            else:
+                angle = 2 * math.pi * i / n
+                x = cx + radius * math.cos(angle)
+                y = cy + radius * math.sin(angle)
+            
             node_item = NodeItem(node_id, x, y, canvas=self)
             self.scene.addItem(node_item)
             self.node_items[node_id] = node_item
@@ -203,6 +220,7 @@ class GraphCanvas(QGraphicsView):
             node.label = etiket_input.text()
             node.aktiflik = aktiflik_input.value()
             node.etkilesim = etkilesim_input.value()
+            self.graph.update_all_weights()
             self.draw_graph()
             if self.parent_window:
                 self.parent_window.statusBar().showMessage(f"Dugum {node_id} guncellendi")
@@ -220,6 +238,12 @@ class GraphCanvas(QGraphicsView):
         
         if self.parent_window:
             self.parent_window.control_panel.update_edge_inputs()
+    
+    def clear_selection(self):
+        for node_id in self.selected_nodes:
+            if node_id in self.node_items:
+                self.node_items[node_id].set_selected_for_edge(False)
+        self.selected_nodes.clear()
     
     def highlight_path(self, path):
         for node_id in path:
@@ -258,9 +282,25 @@ class ControlPanel(QWidget):
         self.node_id_input.setPlaceholderText("Dugum ID")
         node_layout.addWidget(self.node_id_input)
         
+        self.aktiflik_input = QLineEdit()
+        self.aktiflik_input.setPlaceholderText("Aktiflik (0-1)")
+        node_layout.addWidget(self.aktiflik_input)
+        
+        self.etkilesim_input = QLineEdit()
+        self.etkilesim_input.setPlaceholderText("Etkilesim")
+        node_layout.addWidget(self.etkilesim_input)
+        
+        self.etiket_input = QLineEdit()
+        self.etiket_input.setPlaceholderText("Etiket (opsiyonel)")
+        node_layout.addWidget(self.etiket_input)
+        
         btn_add_node = QPushButton("Dugum Ekle")
         btn_add_node.clicked.connect(self.add_node)
         node_layout.addWidget(btn_add_node)
+        
+        btn_random_node = QPushButton("Rastgele Ekle")
+        btn_random_node.clicked.connect(self.add_random_node)
+        node_layout.addWidget(btn_random_node)
         
         btn_remove_node = QPushButton("Dugum Sil")
         btn_remove_node.clicked.connect(self.remove_node)
@@ -337,8 +377,7 @@ class ControlPanel(QWidget):
         result_layout = QVBoxLayout()
         self.result_text = QTextEdit()
         self.result_text.setReadOnly(True)
-        self.result_text.setMaximumHeight(180)
-        self.result_text.setStyleSheet("font-family: Consolas, monospace; font-size: 10px;")
+        self.result_text.setMaximumHeight(150)
         result_layout.addWidget(self.result_text)
         result_group.setLayout(result_layout)
         layout.addWidget(result_group)
@@ -346,6 +385,52 @@ class ControlPanel(QWidget):
         layout.addStretch()
         self.setLayout(layout)
         self.setFixedWidth(200)
+    
+    def add_node(self):
+        id_text = self.node_id_input.text()
+        if not id_text:
+            QMessageBox.warning(self, "Hata", "Dugum ID bos olamaz!")
+            return
+        
+        try:
+            node_id = int(id_text)
+        except ValueError:
+            QMessageBox.warning(self, "Hata", "Dugum ID sayi olmali!")
+            return
+        
+        try:
+            aktiflik = float(self.aktiflik_input.text() or "0.5")
+        except ValueError:
+            QMessageBox.warning(self, "Hata", "Aktiflik sayi olmali (ornek: 0.5)!")
+            return
+        
+        if aktiflik < 0 or aktiflik > 1:
+            QMessageBox.warning(self, "Hata", "Aktiflik 0-1 arasi olmali!")
+            return
+        
+        try:
+            etkilesim = int(self.etkilesim_input.text() or "0")
+        except ValueError:
+            QMessageBox.warning(self, "Hata", "Etkilesim tam sayi olmali!")
+            return
+        
+        etiket = self.etiket_input.text() or None
+        
+        if self.parent_window.graph.add_node(node_id, aktiflik, etkilesim, label=etiket):
+            self.parent_window.canvas.draw_graph()
+            self.parent_window.statusBar().showMessage(f"Dugum {node_id} eklendi")
+        else:
+            QMessageBox.warning(self, "Hata", f"Dugum {node_id} zaten var!")
+    
+    def add_random_node(self):
+        existing_ids = list(self.parent_window.graph.nodes.keys())
+        new_id = max(existing_ids) + 1 if existing_ids else 1
+        aktiflik = round(random.uniform(0.1, 1.0), 2)
+        etkilesim = random.randint(1, 20)
+        
+        self.parent_window.graph.add_node(new_id, aktiflik, etkilesim)
+        self.parent_window.canvas.draw_graph()
+        self.parent_window.statusBar().showMessage(f"Rastgele dugum {new_id} eklendi (a={aktiflik}, e={etkilesim})")
     
     def update_edge_inputs(self):
         selected = self.parent_window.canvas.selected_nodes
@@ -365,16 +450,15 @@ class ControlPanel(QWidget):
         for node in nodes:
             text += f"{node.node_id:<5}{node.label:<15}{node.aktiflik:<10}{node.etkilesim:<10}\n"
         
-        QMessageBox.information(self, f"Dugum Listesi ({len(nodes)} dugum)", text)
-    
-    def add_node(self):
-        try:
-            node_id = int(self.node_id_input.text())
-            if self.parent_window.graph.add_node(node_id):
-                self.parent_window.canvas.draw_graph()
-                self.parent_window.statusBar().showMessage(f"Dugum {node_id} eklendi")
-        except ValueError:
-            QMessageBox.warning(self, "Hata", "Gecersiz ID!")
+        text += "\nDuzenleme icin dugum ID girin:"
+        
+        reply = QMessageBox.question(self, f"Dugum Listesi ({len(nodes)} dugum)", 
+                                     text + "\n\nDuzenlemek ister misiniz?",
+                                     QMessageBox.Yes | QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            node_id, ok = QInputDialog.getInt(self, "Duzenle", "Dugum ID:")
+            if ok and node_id in self.parent_window.graph.nodes:
+                self.parent_window.canvas.edit_node(node_id)
     
     def remove_node(self):
         try:
@@ -382,6 +466,8 @@ class ControlPanel(QWidget):
             if self.parent_window.graph.remove_node(node_id):
                 self.parent_window.canvas.draw_graph()
                 self.parent_window.statusBar().showMessage(f"Dugum {node_id} silindi")
+            else:
+                QMessageBox.warning(self, "Hata", "Dugum bulunamadi!")
         except ValueError:
             QMessageBox.warning(self, "Hata", "Gecersiz ID!")
     
@@ -392,6 +478,8 @@ class ControlPanel(QWidget):
             if self.parent_window.graph.add_edge(n1, n2):
                 self.parent_window.canvas.draw_graph()
                 self.parent_window.statusBar().showMessage(f"Kenar {n1}-{n2} eklendi")
+            else:
+                QMessageBox.warning(self, "Hata", "Kenar eklenemedi!")
         except ValueError:
             QMessageBox.warning(self, "Hata", "Gecersiz ID!")
     
@@ -402,6 +490,8 @@ class ControlPanel(QWidget):
             if self.parent_window.graph.remove_edge(n1, n2):
                 self.parent_window.canvas.draw_graph()
                 self.parent_window.statusBar().showMessage(f"Kenar {n1}-{n2} silindi")
+            else:
+                QMessageBox.warning(self, "Hata", "Kenar bulunamadi!")
         except ValueError:
             QMessageBox.warning(self, "Hata", "Gecersiz ID!")
     
@@ -414,11 +504,12 @@ class ControlPanel(QWidget):
             elapsed = (time.time() - start_time) * 1000
             self.result_text.setText(f"BFS Sonucu:\n{result['visited']}\n\nSure: {elapsed:.2f} ms")
             self.parent_window.canvas.reset_colors()
+            bfs_colors = ['#FF6B6B', '#FF8E72', '#FFB07A', '#FFD185', '#FFF192']
             for node_id in result['visited']:
                 if node_id in self.parent_window.canvas.node_items:
                     level = result['levels'].get(node_id, 0)
-                    colors = ['#FF6B6B', '#FF8E72', '#FFB07A', '#FFD185', '#FFF192']
-                    self.parent_window.canvas.node_items[node_id].set_color(colors[min(level, 4)])
+                    color_idx = min(level, len(bfs_colors) - 1)
+                    self.parent_window.canvas.node_items[node_id].set_color(bfs_colors[color_idx])
     
     def run_dfs(self):
         start, ok = QInputDialog.getInt(self, "DFS", "Baslangic dugum ID:")
@@ -428,6 +519,13 @@ class ControlPanel(QWidget):
             result = dfs(self.parent_window.graph, start)
             elapsed = (time.time() - start_time) * 1000
             self.result_text.setText(f"DFS Sonucu:\n{result['visited']}\n\nSure: {elapsed:.2f} ms")
+            self.parent_window.canvas.reset_colors()
+            dfs_colors = ['#2ECC71', '#27AE60', '#1E8449', '#196F3D', '#145A32']
+            for node_id in result['visited']:
+                if node_id in self.parent_window.canvas.node_items:
+                    disc = result['discovery'].get(node_id, 0) - 1
+                    color_idx = min(max(disc, 0), len(dfs_colors) - 1)
+                    self.parent_window.canvas.node_items[node_id].set_color(dfs_colors[color_idx])
     
     def run_dijkstra(self):
         start, ok1 = QInputDialog.getInt(self, "Dijkstra", "Baslangic dugum ID:")
@@ -494,8 +592,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.graph = graph
         self.setWindowTitle("Sosyal Ag Analizi")
-        self.setGeometry(100, 100, 900, 650)
+        self.setGeometry(100, 100, 1000, 700)
         self.init_ui()
+        self.create_menu()
     
     def init_ui(self):
         central = QWidget()
@@ -513,3 +612,46 @@ class MainWindow(QMainWindow):
         
         self.setStatusBar(QStatusBar())
         self.statusBar().showMessage("Hazir")
+    
+    def create_menu(self):
+        menubar = self.menuBar()
+        
+        file_menu = menubar.addMenu("Dosya")
+        
+        open_json = QAction("JSON Ac", self)
+        open_json.triggered.connect(self.load_json)
+        file_menu.addAction(open_json)
+        
+        save_json = QAction("JSON Kaydet", self)
+        save_json.triggered.connect(self.save_json)
+        file_menu.addAction(save_json)
+        
+        file_menu.addSeparator()
+        
+        exit_action = QAction("Cikis", self)
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+    
+    def load_json(self):
+        filepath, _ = QFileDialog.getOpenFileName(self, "JSON Dosyasi Ac", "", "JSON (*.json)")
+        if filepath:
+            from data_io import load_json
+            positions = load_json(self.graph, filepath)
+            self.canvas.draw_graph()
+            if positions:
+                for node_id, (x, y) in positions.items():
+                    if node_id in self.canvas.node_items:
+                        self.canvas.node_items[node_id].setPos(x, y)
+                self.canvas.update_edges()
+            self.statusBar().showMessage(f"Yuklendi: {filepath}")
+    
+    def save_json(self):
+        filepath, _ = QFileDialog.getSaveFileName(self, "JSON Kaydet", "", "JSON (*.json)")
+        if filepath:
+            from data_io import save_json
+            positions = {}
+            for node_id, item in self.canvas.node_items.items():
+                pos = item.scenePos()
+                positions[node_id] = (pos.x(), pos.y())
+            save_json(self.graph, filepath, positions)
+            self.statusBar().showMessage(f"Kaydedildi: {filepath}")
