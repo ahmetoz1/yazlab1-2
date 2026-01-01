@@ -1,10 +1,6 @@
 import json
 
 def save_json(graph, filepath, positions=None):
-    """
-    Graf verisini JSON dosyasına kaydeder.
-    Pozisyon bilgisi de kaydedilir.
-    """
     data = {
         'nodes': [],
         'edges': []
@@ -34,10 +30,6 @@ def save_json(graph, filepath, positions=None):
 
 
 def load_json(graph, filepath):
-    """
-    JSON dosyasından graf verisini yükler.
-    Pozisyon bilgisi de restore edilir.
-    """
     with open(filepath, 'r', encoding='utf-8') as f:
         data = json.load(f)
     
